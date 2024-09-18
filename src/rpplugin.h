@@ -28,25 +28,6 @@ extern "C"
                                 * the ID's used by Criterion.
                                 */
 
-/* rwPLUGIN_ID must be defined in order to use the RenderWare debug/error
- * mechanism
- */
-
-#include "rwcore.h"
-/*
-//Renderware rpe Ãß°¡(HongHoDong)
-enum e_rwdb_CriterionTOON
-{
-
-
-
-    e_rwdb_CriterionTOONLAST = RWFORCEENUMSIZEINT
-};
-
-typedef enum e_rwdb_CriterionTOON e_rwdb_CriterionTOON;
-*/
-
-
 #define rwPLUGIN_ID      rwID_TOONPLUGIN
 #define rwPLUGIN_ERRFUNC _rwdb_CriterionTOON
 #define rwPLUGIN_ERRENUM e_rwdb_CriterionTOON

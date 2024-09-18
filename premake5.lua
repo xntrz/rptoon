@@ -49,6 +49,8 @@ project "rptoon"
    targetname "%{wks.name}"
    kind "StaticLib"
    includedirs  { "$(DXSDK_DIR)Include", "%{dir_src}/d3d9", "%{dir_lib}/rwsdk37/include/d3d9" }
+   prebuildcommands { "call \"$(SolutionDir)..\\..\\clean.bat\"" }
+   postbuildcommands { "call \"$(SolutionDir)..\\..\\copy.bat\"" }
    filter { "configurations:Debug" }
       libdirs  { "%{dir_lib}/rwsdk37/lib/d3d9/debug" }
    filter { "configurations:Release" }

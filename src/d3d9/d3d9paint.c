@@ -25,15 +25,8 @@
 
 #include "toonsilhouettevertexshader.h"
 
-//by Hodong(2006.1.2)
-
 #include <d3dx9.h>
 
-RpAtomicCallBackRender RpNtlToonNotEdgeTwoSideCallBack;			
-RpAtomicCallBackRender RpNtlToonEdgeTwoSideCallBack;
-RpAtomicCallBackRender RpNtlToonDefaultCallBack;
-
-#define COLORSCALAR 0.003921568627450980392156862745098f /* 1.0f/ 255.0f */
 
 #define RENDERLINES
 
@@ -171,7 +164,8 @@ UpdateCameraSpaceLightMatrix(void)
 	if (NULL != RWSRCGLOBAL(curWorld))
 	{
 		RpLight *dirLight = FindFirstGlobalLight();
-		//RWASSERT((dirLight != 0) && "No directional light found");
+		RWASSERT((dirLight != 0) && "No directional light found");
+
 		if (dirLight)
 		{
 			/* Set the lights direction, in D3D's "camera space" to match D3DTSS_TCI_CAMERASPACENORMAL */
@@ -240,7 +234,7 @@ FlatRender( const RxD3D9ResEntryHeader  *resEntryHeader,
 		mesh->material->texture != NULL )
 	{
 		RwD3D9SetTexture(mesh->material->texture, 0);
-
+		D3DTSS_TCI_CAMERASPACENORMAL;
 		/* use ordinary UV set for texture 0 */
 		RwD3D9SetTextureStageState(0, D3DTSS_TEXCOORDINDEX, 0 );
 
@@ -301,32 +295,140 @@ static D3DMATRIX    D3D9IdentyMatrix = D3DMatrixInitMacro( 0.0f, 0.0f, 0.0f, 0.0
 														  0.0f, 0.0f, 1.0f, 0.0f,
 														  0.0f, 0.0f, 0.0f, 1.0f);
 
-static void ToonShadeRender(const RxD3D9ResEntryHeader* resEntryHeader, const RxD3D9InstanceData *mesh, RwUInt32 flags, const RpToonPaint* paint)
+static void
+ToonShadeRender(const RxD3D9ResEntryHeader* resEntryHeader,
+				const RxD3D9InstanceData* 	mesh,
+				RwUInt32 					flags,
+				const RpToonPaint* 			paint)
 {
 	RwTexture*		multiTexture = NULL;
 	const RwRGBA*	color = &mesh->material->color;
-	//sMatExtInfo		Param; 
-
-	/*
-	Load up the gradient texture w/ transform to do a dot product of light direction with normals,
-	texture addressing mode will perform the clamping for us.
-	In the case where there's no light set, this matrix will pick a texel with uv coordinate (0,0)
-	which should be the darkest shade for that texture.
-	*/
 
 	RWFUNCTION(RWSTRING("ToonShadeRender"));
 
-	// go through the proper renderpipe
-	//Param.flags					= flags;
-	//Param.resEntryHeader		= resEntryHeader;
-	//Param.mesh					= mesh;
-	//Param.pMaterial				= mesh->material;
-	//Param.pCamSpaceLightMatrix	= &D3D9CameraSpaceLightmatrix;
-	//Param.pToonTex				= paint->gradient;
-	//Param.pSkinColor			= RpNtlMaterialExtGetSkinColor(mesh->material);
-	//Param.pEmblemTex			= RpNtlMaterialExtGetEmblemTex(mesh->material);
-	//Param.pDogiColor			= RpNtlMaterialExtGetDogiColor(mesh->material);
-	//RpNtlMaterialExecuteRenderCB(&Param);
+	if (flags & (rxGEOMETRY_TEXTURED2 | rxGEOMETRY_TEXTURED))
+	{
+		multiTexture = mesh->material->texture;		
+	}
+
+	if (flags & rxGEOMETRY_MODULATE)
+	{
+		const RwRGBA* 	color = &mesh->material->color;
+		D3DCOLOR 		matColor;
+
+		matColor = 	(((RwUInt32)color->alpha) 	<< 24) |
+					(((RwUInt32)color->red) 	<< 16) |
+					(((RwUInt32)color->green) 	<< 8) |
+					color->blue;
+
+		RwD3D9SetRenderState(D3DRS_TEXTUREFACTOR, matColor);
+	}
+	else
+	{
+		RwD3D9SetRenderState(D3DRS_TEXTUREFACTOR, 0xffffffff);
+	}
+
+	RwD3D9SetTextureStageState(0, D3DTSS_TEXCOORDINDEX, D3DTSS_TCI_CAMERASPACENORMAL);
+	RwD3D9SetTextureStageState(0, D3DTSS_TEXTURETRANSFORMFLAGS, D3DTTFF_COUNT2);
+	RwD3D9SetTransform(D3DTS_TEXTURE0, &D3D9CameraSpaceLightmatrix);
+	RwD3D9SetTexture(paint->gradient, 0);
+
+	RwD3D9SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_MODULATE);
+	RwD3D9SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_TEXTURE);
+	RwD3D9SetTextureStageState(0, D3DTSS_COLORARG2, D3DTA_TFACTOR);
+
+	RwD3D9SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_MODULATE);
+	RwD3D9SetTextureStageState(0, D3DTSS_ALPHAARG1, D3DTA_TEXTURE);
+	RwD3D9SetTextureStageState(0, D3DTSS_ALPHAARG2, D3DTA_TFACTOR);
+
+	if (multiTexture && VideoCardSupportsMultitexture)
+	{
+		RwD3D9SetTexture(multiTexture, 1);
+		RwD3D9SetTextureStageState(1, D3DTSS_TEXCOORDINDEX, 0);
+
+		RwD3D9SetTextureStageState(1, D3DTSS_COLOROP, D3DTOP_MODULATE);
+		RwD3D9SetTextureStageState(1, D3DTSS_COLORARG1, D3DTA_TEXTURE);
+		RwD3D9SetTextureStageState(1, D3DTSS_COLORARG2, D3DTA_CURRENT);
+
+		RwD3D9SetTextureStageState(1, D3DTSS_ALPHAOP, D3DTOP_MODULATE);
+		RwD3D9SetTextureStageState(1, D3DTSS_ALPHAARG1, D3DTA_TEXTURE);
+		RwD3D9SetTextureStageState(1, D3DTSS_ALPHAARG2, D3DTA_CURRENT);
+	}
+	else
+	{
+		RwD3D9SetTexture(NULL, 1);
+	};
+	
+	if (resEntryHeader->indexBuffer != NULL)
+	{
+		RwD3D9DrawIndexedPrimitive(
+			(D3DPRIMITIVETYPE)resEntryHeader->primType,
+			mesh->baseIndex,
+			0,
+			mesh->numVertices,
+			mesh->startIndex,
+			mesh->numPrimitives
+		);
+	}
+	else
+	{
+		RwD3D9DrawPrimitive(
+			(D3DPRIMITIVETYPE)resEntryHeader->primType,
+			mesh->baseIndex,
+			mesh->numPrimitives
+		);
+	};
+
+	if (multiTexture && VideoCardSupportsMultitexture)
+	{
+		void* srcBlend = NULL;
+		void* dstBlend = NULL;
+		void* zWriteFlag = NULL;
+
+		RwRenderStateGetMacro(rwRENDERSTATESRCBLEND, &srcBlend);
+		RwRenderStateGetMacro(rwRENDERSTATEDESTBLEND, &srcBlend);
+		RwRenderStateGetMacro(rwRENDERSTATEZWRITEENABLE, &zWriteFlag);
+
+		RwD3D9SetRenderState(D3DRS_ZWRITEENABLE, FALSE);
+		RwD3D9SetTexture(multiTexture, 0);
+		RwD3D9SetTextureStageState(0, D3DTSS_TEXCOORDINDEX, 0);
+		RwD3D9SetTextureStageState(0, D3DTSS_TEXTURETRANSFORMFLAGS, D3DTTFF_DISABLE);
+		RwD3D9SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_SELECTARG1);
+		RwD3D9SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_TEXTURE);
+		RwD3D9SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_MODULATE);
+		RwD3D9SetTextureStageState(0, D3DTSS_ALPHAARG1, D3DTA_TEXTURE);
+		RwD3D9SetTextureStageState(0, D3DTSS_ALPHAARG2, D3DTA_TFACTOR);
+
+		_rwD3D9RenderStateVertexAlphaEnable(TRUE);
+		_rwD3D9RenderStateSrcBlend(rwBLENDZERO);
+		_rwD3D9RenderStateDestBlend(rwBLENDSRCCOLOR);
+
+		if (resEntryHeader->indexBuffer != NULL)
+		{
+			RwD3D9DrawIndexedPrimitive(
+				(D3DPRIMITIVETYPE)resEntryHeader->primType,
+				mesh->baseIndex,
+				0,
+				mesh->numVertices,
+				mesh->startIndex,
+				mesh->numPrimitives
+			);
+		}
+		else
+		{
+			RwD3D9DrawPrimitive(
+				(D3DPRIMITIVETYPE)resEntryHeader->primType,
+				mesh->baseIndex,
+				mesh->numPrimitives
+			);
+		}
+
+		_rwD3D9RenderStateDestBlend((RwBlendFunction)dstBlend);
+		_rwD3D9RenderStateSrcBlend((RwBlendFunction)srcBlend);
+		_rwD3D9RenderStateVertexAlphaEnable((RwBool)FALSE);
+
+		RwD3D9SetRenderState(D3DRS_ZWRITEENABLE, (RwUInt32)zWriteFlag);
+	};
 
 	RWRETURNVOID();
 }
@@ -336,7 +438,6 @@ ToonShadeClose(void)
 {
 	RWFUNCTION(RWSTRING("ToonShadeClose"));
 
-	/* turn off uv generation */
 	RwD3D9SetTextureStageState(0, D3DTSS_TEXTURETRANSFORMFLAGS, D3DTTFF_DISABLE );
 
 	RwD3D9SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_MODULATE);
@@ -356,31 +457,117 @@ ToonShadeClose(void)
 
 	RwD3D9SetTextureStageState(1, D3DTSS_TEXCOORDINDEX, 1);
 
-	//HoDong
-	RwRenderStateSet(rwRENDERSTATEVERTEXALPHAENABLE, (void *)FALSE);
-
 	RWRETURNVOID();
 }
 
 static void
-ToonShadePSRender( const RxD3D9ResEntryHeader  *resEntryHeader,
-				  const RxD3D9InstanceData *mesh,
-				  RwUInt32 flags,
-				  const RpToonPaint *paint )
-{
+ToonShadePSRender(const RxD3D9ResEntryHeader  	*resEntryHeader,
+				  const RxD3D9InstanceData 		*mesh,
+				  RwUInt32 						flags,
+				  const RpToonPaint 			*paint)
+{	
+	static float psData[2][4] = 
+	{
+		{ 0.0f, 0.0f, 0.0f, 0.0f }, /* base */
+		{ 1.0f, 1.0f, 1.0f, 1.0f }	/* color */
+	};
+	
+	RwRGBAReal color;
+	
+	RwUInt32 matColor = (((RwUInt32)mesh->material->color.alpha) 	<< 24) |
+						(((RwUInt32)mesh->material->color.red) 		<< 16) |
+						(((RwUInt32)mesh->material->color.green)	<< 8) |
+						mesh->material->color.blue;
+
+	RwBool hasBase = 	(flags & (rxGEOMETRY_TEXTURED2 | rxGEOMETRY_TEXTURED)) &&
+						(mesh->material->texture != NULL);
+
+	RwBool hasColor = 	(flags & rxGEOMETRY_MODULATE) &&
+						(matColor != 0xFFFFFFFF);
+	
 	RWFUNCTION(RWSTRING("ToonShadePSRender"));
+	
+	RwD3D9SetTexture(paint->gradient, 0);
 
-	//by HoDong(2006.1.2)
-	ToonShadeRender(resEntryHeader, mesh, flags, paint);
+	psData[0][0] = D3D9CameraSpaceLightmatrix._11;
+	psData[0][1] = D3D9CameraSpaceLightmatrix._21;
+	psData[0][2] = D3D9CameraSpaceLightmatrix._31;
+	psData[0][3] = 0.0f;
 
+	RwRGBARealFromRwRGBAMacro(&color, &mesh->material->color);
+	psData[1][0] = color.red;
+	psData[1][1] = color.green;
+	psData[1][2] = color.blue;
+	psData[1][3] = color.alpha;
+	
+	if (hasBase && hasColor)
+	{
+		RwD3D9SetTexture(mesh->material->texture, 1);
+		RwD3D9SetTextureStageState(1, D3DTSS_TEXCOORDINDEX, 0);
+		RwD3D9SetPixelShader(D3D9ToonPixelShader);
+		RwD3D9SetPixelShaderConstant(0, psData, 2);
+	}
+	else if (hasBase)
+	{
+		RwD3D9SetTexture(mesh->material->texture, 1);
+		RwD3D9SetTextureStageState(1, D3DTSS_TEXCOORDINDEX, 0);
+		RwD3D9SetPixelShader(D3D9ToonPixelShaderNoColor);
+		RwD3D9SetPixelShaderConstant(0, psData, 1);
+	}
+	else if (hasColor)
+	{
+		RwD3D9SetTexture(0, 1);
+		RwD3D9SetTextureStageState(1, D3DTSS_TEXCOORDINDEX, 1);
+		RwD3D9SetPixelShader(D3D9ToonPixelShaderNoBase);
+		RwD3D9SetPixelShaderConstant(0, psData, 2);
+	}
+	else
+	{
+		RwD3D9SetTexture(0, 1);
+		RwD3D9SetTextureStageState(1, D3DTSS_TEXCOORDINDEX, 1);
+		RwD3D9SetPixelShader(D3D9ToonPixelShaderNoBaseNoColor);
+		RwD3D9SetPixelShaderConstant(0, psData, 1);
+	};
+	
+	RwD3D9SetTextureStageState(0, D3DTSS_TEXCOORDINDEX, D3DTSS_TCI_CAMERASPACENORMAL);
+	RwD3D9SetTextureStageState(0, D3DTSS_TEXTURETRANSFORMFLAGS, D3DTTFF_DISABLE);
+	
+	if (resEntryHeader->indexBuffer != NULL)
+	{
+		RwD3D9DrawIndexedPrimitive(
+			(D3DPRIMITIVETYPE)resEntryHeader->primType,
+			mesh->baseIndex,
+			0,
+			mesh->numVertices,
+			mesh->startIndex,
+			mesh->numPrimitives
+		);
+	}
+	else
+	{
+		RwD3D9DrawPrimitive(
+			(D3DPRIMITIVETYPE)resEntryHeader->primType,
+			mesh->baseIndex,
+			mesh->numPrimitives
+		);
+	}
+	
 	RWRETURNVOID();
 }
-
 
 static void
 ToonShadePSClose(void)
 {
-	ToonShadeClose();
+	RWFUNCTION(RWSTRING("ToonShadePSClose"));
+
+	RwD3D9SetTextureStageState(0, D3DTSS_TEXCOORDINDEX, 0);
+	RwD3D9SetTextureStageState(0, D3DTSS_TEXTURETRANSFORMFLAGS, D3DTTFF_DISABLE);
+	RwD3D9SetTextureStageState(1, D3DTSS_TEXCOORDINDEX, 1);
+	RwD3D9SetTexture(NULL, 1);
+	
+	RwD3D9SetPixelShader(NULL);
+
+	RWRETURNVOID();
 }
 
 static PaintRender _paintRender[RPTOON_PAINTTYPE_COUNT] =
@@ -716,28 +903,7 @@ _rpToonD3D9RenderCallback(RwResEntry *repEntry,
 		RpAtomic    *atomic = (RpAtomic *)object;
 		RpGeometry *g;
 
-		/*
-		count		= RpGeometryGetUserDataArrayCount(RpAtomicGetGeometry(pAtomic));
-		pUserData	= RpGeometryGetUserDataArray(RpAtomicGetGeometry(pAtomic), 0);
-		chBuffer	= RpUserDataArrayGetString(pUserData, 0);
-		if(chBuffer != NULL)
-			strcpy_s(g_ToonErrStr[0], 128, chBuffer);
-		else
-			strcpy_s(g_ToonErrStr[0], 128, "Atomic name is NULL");
-			*/
-
 		g = RpAtomicGetGeometry(atomic);
-
-		// woody
-		if(g)
-		{
-		//strcpy_s(g_ToonErrStr[0], 64, RpGeometryGetMaterial(g, 0)->texture->name);
-		}
-		else
-		{
-		//strcpy_s(g_ToonErrStr[0], 64, "atomic is NULL");
-		}
-
 		RWASSERT((g != NULL) && "atomic can't have null geometry!");
 
 		toonGeo = RpToonGeometryGetToonGeo(g);
@@ -806,20 +972,16 @@ _rpToonD3D9RenderCallback(RwResEntry *repEntry,
 
 		const RpToonMaterial *toonMat = *RPTOONMATERIALGETCONSTDATA( mesh->material );
 
-		if (mesh->vertexAlpha ||
-			(0xFF != mesh->material->color.alpha))
+		if (mesh->vertexAlpha || (0xFF != mesh->material->color.alpha))
 		{
 			_rwD3D9RenderStateVertexAlphaEnable(TRUE);
 		}
-
-		//외부에서 지정한 AlphaEnable이 지정이 안된다.(by HoDong)
-		//else
-		//{
-		//_rwD3D9RenderStateVertexAlphaEnable(FALSE);
-		//}
+		else
+		{
+			_rwD3D9RenderStateVertexAlphaEnable(FALSE);
+		}
 
 		/* use the toon material paint override if there is one */
-
 		if (toonMat && toonMat->overrideGeometryPaint && toonMat->paint)
 		{
 			thePaint = toonMat->paint;
@@ -837,19 +999,6 @@ _rpToonD3D9RenderCallback(RwResEntry *repEntry,
 
 		/* Vertex shader */
 		RwD3D9SetVertexShader(mesh->vertexShader);
-
-		// woody
-		if(thePaint)
-		{
-		//strcpy_s(g_ToonErrStr[1], 64, mesh->material->texture->name);
-		}
-		else
-		{
-		//if(mesh)
-		//strcpy_s(g_ToonErrStr[1], 64, mesh->material->texture->name);
-		//else
-		//strcpy_s(g_ToonErrStr[1], 64, "PAINT, MESH are NULL");
-		}
 
 		/* use the paint's paint type unless lightings turned off, in which case force flat */
 		thePaintType = thePaint->type;
@@ -1028,17 +1177,10 @@ _rpToonPipelinesCreate(void)
 	d3dCaps = (const D3DCAPS9 *)RwD3D9GetCaps();
 	VideoCardSupportsMultitexture = (d3dCaps->MaxSimultaneousTextures > 2);
 
-	//by HoDong(2006.12.17)
-	if(!VideoCardSupportsMultitexture)
-		RwDebugSendMessage(rwDEBUGMESSAGE, "Toon plugin", "Device supports not multitexture 2 and not render cartoon.");
-
-
-	//by HoDong(2006.1.2)
 	if ((d3dCaps->VertexShaderVersion & 0xFFFF) >= 0x0101)
 	{
 		RwD3D9CreateVertexShader(dwToonSilhouetteVertexShader, &FastSilhouetteVertexShader);
 	}
-
 
 	if ((d3dCaps->PixelShaderVersion & 0xFFFF) >= 0x0200)
 	{
@@ -1444,13 +1586,7 @@ _rpToonAtomicPipelinesAttach(RpAtomic *atomic)
 
 	_rpToonAtomicChainAtomicRenderCallback(atomic);
 
-
-	//by HoDong(2006.1.2)
-	RpNtlToonNotEdgeTwoSideCallBack = RpD3D9ToonFastNotSilhouetteAtomicRenderCallback;			
-	RpNtlToonEdgeTwoSideCallBack    = ToonAtomicRender;
-	RpNtlToonDefaultCallBack        = RpD3D9ToonFastSilhouetteAtomicRenderCallback;
-
-	RWRETURN(success!=0);
+	RWRETURN(TRUE);
 }
 
 static RpWorldSector *
