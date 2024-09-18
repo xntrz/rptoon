@@ -56,7 +56,15 @@ extern RwBool _rpToonPipelinesDestroy(void);
 extern RwBool _rpToonAtomicPipelinesAttach(RpAtomic *atomic);
 extern RwBool _rpToonSectorPipelinesAttach(RpWorldSector *sector);
 extern void _rpToonAtomicChainAtomicRenderCallback(RpAtomic *atomic);
-extern void _rpToonAtomicChainSkinnedAtomicRenderCallback(RpAtomic *atomic);
+extern void _rpToonAtomicChainSkinnedAtomicRenderCallback(RpAtomic* atomic);
+
+
+// NEW
+extern RwBool _rpToonSkinPipelineCreate(void);
+
+// NEW
+extern RwBool _rpToonSkinPipelineDestroy(void);
+
 
 #ifdef    __cplusplus
 }

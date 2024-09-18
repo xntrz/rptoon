@@ -619,7 +619,8 @@ ToonSectorCopy(void *dstObject,
     RWRETURN(dstObject);
 }
 
-static void *
+
+static void*
 ToonOpen(void *instance,
          RwInt32 offset __RWUNUSED__,
          RwInt32 size   __RWUNUSED__)
@@ -634,8 +635,15 @@ ToonOpen(void *instance,
 
         /* Set up the pipeline. */
         success = _rpToonPipelinesCreate();
-        RWASSERT(FALSE != success);
-    }
+		RWASSERT(FALSE != success);
+
+		// NEW
+		if (success)
+		{
+			success = _rpToonSkinPipelineCreate();
+			RWASSERT(FALSE != success);
+		};
+	}
 
     /* Another instance. */
     _rpToonGlobals.module.numInstances++;
@@ -657,7 +665,10 @@ ToonClose(void *instance,
 
     if (0 == _rpToonGlobals.module.numInstances)
     {
-        RwBool success;
+		RwBool success;
+
+		// NEW
+		_rpToonSkinPipelineDestroy();
 
         /* Destroy the toon pipelines. */
         success = _rpToonPipelinesDestroy();

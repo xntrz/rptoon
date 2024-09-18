@@ -793,6 +793,11 @@ RpToonWorldSectorGetToonGeo(RpWorldSector *sector);
 /* Plugin */
 extern RwBool
 RpToonPluginAttach(void);
+
+/* NEW: set */
+extern void
+RpToonSkinAtomicSetType(RpAtomic* atomic, RwInt32 type);
+
 #ifdef    __cplusplus
 }
 #endif /* __cplusplus */
