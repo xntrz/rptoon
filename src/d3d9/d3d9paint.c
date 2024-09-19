@@ -234,7 +234,7 @@ FlatRender( const RxD3D9ResEntryHeader  *resEntryHeader,
 		mesh->material->texture != NULL )
 	{
 		RwD3D9SetTexture(mesh->material->texture, 0);
-		D3DTSS_TCI_CAMERASPACENORMAL;
+
 		/* use ordinary UV set for texture 0 */
 		RwD3D9SetTextureStageState(0, D3DTSS_TEXCOORDINDEX, 0 );
 

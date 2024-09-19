@@ -1,5 +1,7 @@
 #include "skin.h"
 
+#include "toonplatform.h"
+
 #include "rpdbgerr.h"
 #include "rpskin.h"
 
@@ -26,9 +28,12 @@ MACRO_START																	\
 }																			\
 MACRO_STOP
 
+#define RpSkinGetNumNodes(skin) \
+	((RwInt32)*(((RwUInt8*)skin) + 28))
+
 
 /*****************************************************************************
- Typedef Enums
+ Typedef & Structs & Enums
  */
 
 typedef void (*RxD3D9AllInOneRenderCallBack)(RwResEntry* repEntry,
@@ -36,10 +41,6 @@ typedef void (*RxD3D9AllInOneRenderCallBack)(RwResEntry* repEntry,
 	RwUInt8 type,
 	RwUInt32 flags);
 
-
-/*****************************************************************************
- Typedef Structs
- */
 
 struct _rxD3D9SkinNodeData
 {
@@ -52,58 +53,48 @@ struct _rxD3D9SkinNodeData
 	void* shaderEndCallback;
 };
 
+struct _HOOKINFO
+{
+	void* srcFunc;
+	void* dstFunc;
+	char orgBytes[8];
+	size_t orgBytesCnt;
+};
+
+enum RpToonSkinInitFlag
+{
+	rpTOONSKININIT_GLOBALS = (1 << 0),
+	rpTOONSKININIT_HOOKS = (1 << 0),
+};
+
 
 typedef struct _rxD3D9SkinNodeData _rxD3D9SkinNodeData;
+typedef struct _HOOKINFO HOOKINFO;
+typedef enum RpToonSkinInitFlag RpToonSkinInitFlag;
+
 
 
 /*****************************************************************************
  vars & data
  */
 
+extern RwBool _rwD3D9SkinNeedsAManagedVertexBuffer(RpAtomic* atomic);
 extern void _rpToonD3D9RenderCallback(RwResEntry* repEntry, void* object, RwUInt8 type, RwUInt32 flags);
 extern void _rpToonAtomicChainSkinnedAtomicRenderCallback(RpAtomic* atomic);
 extern RwBool _rwD3D9SkinUseVertexShader(RpAtomic* atomic);
+
 extern RwUInt32 _rpSkinGlobals;
 
+static RwUInt32 ToonSkinInitFlag = 0;
 static RxPipeline* ToonSkinPipeline = NULL;
-static char ToonSkinHookBuffer[64];
-static void* ToonSkinHookPtr = NULL;
-static size_t ToonSkinHookBytes = 0;
+
+static HOOKINFO HookInfoArray[32];
+static int HookInfoCnt = 0;
 
 
 /*****************************************************************************
  private functions
  */
-
-static RwBool
-_rwD3D9SkinUseVertexShaderHook(RpAtomic* atomic)
-{	
-	RxPipeline* pipe = NULL;
-	RpSkin* skin = NULL;
-	RwBool result = FALSE;
-	uintptr_t* ptr = NULL;
-
-	RWFUNCTION(RWSTRING("_rpToonSkinSetupGlobals"));
-
-	RpAtomicGetPipelineMacro(atomic, &pipe);
-
-	if ((pipe == NULL) || (pipe->pluginData != rpSKINTYPETOON))
-	{
-		// TODO
-		ptr = &_rpSkinGlobals;
-		ptr += 16;
-
-		if (*(ptr + 0) && *(ptr + 1))
-		{
-			skin = RpSkinGeometryGetSkin(RpAtomicGetGeometryMacro(atomic));
-			if (skin && (*((char*)skin + 28) <= *(ptr + 2)))
-				result = TRUE;
-		};
-	};
-
-	RWRETURN(result);
-};
-
 
 static RwBool
 _rpToonSkinSetupGlobals(void)
@@ -160,12 +151,101 @@ _rpToonSkinShutdownGlobals(void)
 
 
 static RwBool
-_rpToonSkinInstallHook(void)
+_rwD3D9SkinToonNeedsAManagedVertexBuffer(RpAtomic* atomic)
+{
+	RwBool result = TRUE;
+	RxPipeline* pipe = NULL;
+	uintptr_t* ptr = NULL;
+	RwBool* rpSkinD3D9HwTransformLight = NULL;
+	RwBool* rpSkinD3D9UseVertexShader = NULL;
+
+	RWFUNCTION(RWSTRING("_rwD3D9SkinToonNeedsAManagedVertexBufferHook"));
+
+	ptr = &_rpSkinGlobals;
+	ptr += 16;
+
+	rpSkinD3D9HwTransformLight = (RwBool*)(ptr + 0);
+	rpSkinD3D9UseVertexShader = (RwBool*)(ptr + 1);
+
+	if (*rpSkinD3D9HwTransformLight && *rpSkinD3D9UseVertexShader)
+	{
+		RpAtomicGetPipelineMacro(atomic, &pipe);
+
+		if ((pipe == NULL) ||
+			(pipe->pluginData != rpSKINTYPETOON) ||
+			(RpAtomicGetRenderCallBackMacro(atomic) == RpD3D9ToonFastSilhouetteAtomicRenderCallback))
+		{
+			result = FALSE;
+		};
+	};
+
+	RWRETURN(result);
+};
+
+
+static RwBool
+_rwD3D9SkinNeedsAManagedVertexBufferHook(RpAtomic* atomic)
+{
+	RwBool result = FALSE;
+	RxPipeline* pipe = NULL;
+
+	RWFUNCTION(RWSTRING("_rwD3D9SkinNeedsAManagedVertexBufferHook"));
+
+	if (_rwD3D9SkinUseVertexShader(atomic) ||
+		_rwD3D9SkinToonNeedsAManagedVertexBuffer(atomic))
+	{
+		result = TRUE;
+	};
+
+	RWRETURN(result);
+};
+
+
+static RwBool
+_rwD3D9SkinUseVertexShaderHook(RpAtomic* atomic)
+{
+	RxPipeline* pipe = NULL;
+	RpSkin* skin = NULL;
+	RwBool result = FALSE;
+	uintptr_t* ptr = NULL;
+	RwBool* rpSkinD3D9HwTransformLight = NULL;
+	RwBool* rpSkinD3D9UseVertexShader = NULL;
+	RwInt32* rpSkinD3D9MaxNumNodes = NULL;
+
+	RWFUNCTION(RWSTRING("_rwD3D9SkinUseVertexShaderHook"));
+
+	RpAtomicGetPipelineMacro(atomic, &pipe);
+
+	if ((pipe == NULL) || (pipe->pluginData != rpSKINTYPETOON))
+	{
+		ptr = &_rpSkinGlobals;
+		ptr += 16;
+
+		rpSkinD3D9HwTransformLight = (RwBool*)(ptr + 0);
+		rpSkinD3D9UseVertexShader = (RwBool*)(ptr + 1);
+		rpSkinD3D9MaxNumNodes = (RwInt32*)(ptr + 2);
+		
+		if (*rpSkinD3D9HwTransformLight && *rpSkinD3D9UseVertexShader)
+		{
+			skin = RpSkinGeometryGetSkin(RpAtomicGetGeometryMacro(atomic));
+			if (skin && (RpSkinGetNumNodes(skin) <= *rpSkinD3D9MaxNumNodes))
+				result = TRUE;
+		};
+	};
+
+	RWRETURN(result);
+};
+
+
+static RwBool
+_rpToonSkinInstallHook(void* srcFunc, void* dstFunc)
 {
 	RwBool result = FALSE;
 	char* ptr = NULL;
 	DWORD dwPrevProtect = 0;
 	uintptr_t offset = 0;
+	HOOKINFO* hookInfo = NULL;
+	const int HookInfoMax = sizeof(HookInfoArray) / sizeof(HookInfoArray[0]);
 	SYSTEM_INFO systemInfo;
 
 	RWFUNCTION(RWSTRING("_rpToonSkinInstallHook"));
@@ -174,7 +254,7 @@ _rpToonSkinInstallHook(void)
 	GetSystemInfo(&systemInfo);
 
 	/* check for incremental linking */
-	ptr = (char*)&_rwD3D9SkinUseVertexShader;
+	ptr = (char*)srcFunc;
 	while (ptr != NULL)
 	{
 		switch (*ptr)
@@ -193,13 +273,22 @@ _rpToonSkinInstallHook(void)
 			{
 				/* dirty but im still in searching for more elegant way ¯\_(ツ)_/¯ */
 
-				_memio(ptr, ToonSkinHookBuffer, 5, FALSE);
-				ToonSkinHookBytes = 5;
-				ToonSkinHookPtr = ptr;
-				
+				/* alloc hook info */
+				if (HookInfoCnt >= HookInfoMax)
+					break;
+
+				hookInfo = &HookInfoArray[HookInfoCnt++];
+
+				/* save hook params for restore at exit */
+				_memio(ptr, hookInfo->orgBytes, 5, FALSE);
+				hookInfo->orgBytesCnt = 5;
+				hookInfo->srcFunc = ptr; // place resolved ptr to src func if there is incremental linking
+				hookInfo->dstFunc = dstFunc;
+
+				/* place hook */
 				static char jmp_payload[5];
 				jmp_payload[0] = '\xE9';
-				*((uintptr_t*)&jmp_payload[1]) = (uintptr_t)_rwD3D9SkinUseVertexShaderHook - (uintptr_t)ptr - sizeof(uintptr_t) - 1;
+				*((uintptr_t*)&jmp_payload[1]) = (uintptr_t)dstFunc - (uintptr_t)ptr - sizeof(uintptr_t) - 1;
 
 				_memio(ptr, jmp_payload, 5, TRUE);
 
@@ -215,14 +304,72 @@ _rpToonSkinInstallHook(void)
 
 
 static void
-_rpToonSkinUninstallHook(void)
+_rpToonSkinUninstallHooks(void)
 {
+	int i = 0;
+	HOOKINFO* hookInfo = NULL;
+
 	RWFUNCTION(RWSTRING("_rpToolSkinUninstallHook"));
 
-	_memio(ToonSkinHookPtr, ToonSkinHookBuffer, ToonSkinHookBytes, TRUE);
+	for (i = HookInfoCnt; i > 0; --i)
+	{
+		hookInfo = &HookInfoArray[i - 1];
 
-	ToonSkinHookBytes = 0;
-	ToonSkinHookPtr = NULL;
+		RWASSERT((hookInfo->dstFunc != NULL) && "hook info allocated but has invalid dstFunc");
+		RWASSERT((hookInfo->srcFunc != NULL) && "hook info allocated but has invalid srcFunc");
+		RWASSERT((hookInfo->orgBytesCnt > 0) && "hook info allocated but has invalid bytes");
+
+		_memio(hookInfo->srcFunc, hookInfo->orgBytes, hookInfo->orgBytesCnt, TRUE);
+	};
+
+	RWRETURNVOID();
+};
+
+
+static RwBool
+_rpToonSkinRegistAllHooks(void)
+{
+	static void* srcFuncTable[] =
+	{
+		&_rwD3D9SkinUseVertexShader,
+		&_rwD3D9SkinNeedsAManagedVertexBuffer,
+	};
+
+	static void* dstFuncTable[] =
+	{
+		&_rwD3D9SkinUseVertexShaderHook,
+		&_rwD3D9SkinNeedsAManagedVertexBufferHook,
+	};
+
+	const int srcFuncTableSize = sizeof(srcFuncTable) / sizeof(srcFuncTable[0]);
+	const int dstFuncTableSize = sizeof(dstFuncTable) / sizeof(dstFuncTable[0]);
+	RwBool result = FALSE;
+	int i = 0;
+
+	RWFUNCTION(RWSTRING("_rpToonSkinRegistAllHooks"));
+
+	RWASSERT((srcFuncTable == dstFuncTable) && "table size should equal");
+
+	for (i = 0; i < srcFuncTableSize; ++i)
+	{
+		result = _rpToonSkinInstallHook(srcFuncTable[i], dstFuncTable[i]);
+		if (result == FALSE)
+		{
+			_rpToonSkinUninstallHooks();
+			RWRETURN(FALSE);
+		};
+	};
+
+	RWRETURN(TRUE);
+};
+
+
+static void
+_rpToonSkinRemoveAllHooks(void)
+{
+	RWFUNCTION(RWSTRING("_rpToonSkinRemoveAllHooks"));
+
+	_rpToonSkinUninstallHooks();
 
 	RWRETURNVOID();
 };
@@ -357,10 +504,18 @@ _rpToonSkinPipelineCreate(void)
 		result = _rpToonSkinSetupGlobals();
 		if (result != FALSE)
 		{
-			result = _rpToonSkinInstallHook();
+			ToonSkinInitFlag |= rpTOONSKININIT_GLOBALS;
+
+			result = _rpToonSkinRegistAllHooks();
 			if (result != FALSE)
 			{
+				ToonSkinInitFlag |= rpTOONSKININIT_HOOKS;
+
 				RWRETURN(TRUE);
+			}
+			else
+			{
+				_rpToonSkinShutdownGlobals();
 			};
 		};
 
@@ -379,9 +534,13 @@ _rpToonSkinPipelineDestroy(void)
 
 	if (ToonSkinPipeline)
 	{
-		_rpToonSkinUninstallHook();
+		if (ToonSkinInitFlag & rpTOONSKININIT_HOOKS)
+			_rpToonSkinRemoveAllHooks();
 
-		_rpToonSkinShutdownGlobals();
+		if (ToonSkinInitFlag & rpTOONSKININIT_GLOBALS)
+			_rpToonSkinShutdownGlobals();
+
+		ToonSkinInitFlag = 0;
 
 		_rpToonSkinDestroyPipeline(ToonSkinPipeline);
 		ToonSkinPipeline = NULL;

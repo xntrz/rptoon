@@ -1,6 +1,6 @@
 /*****************************************************************************
 
-	File: skin.h
+	File: skin.h (NEW)
 
 	Purpose: make toon plugin work by changing some skin plugin internals without recompile it with toonfx feature
 
