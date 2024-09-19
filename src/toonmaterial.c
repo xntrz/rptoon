@@ -119,10 +119,7 @@ RpToonMaterialSetPaintID( RpMaterial *mat, const RwChar *name )
     if (name)
     {
         toonMat->overrideGeometryPaint = TRUE;
-
-		//HoDong 이함수를 바꾸면 문제가 없는지 모르겠다. (나중에 Test)
 		strncpy(toonMat->paintName, name, rwTEXTUREBASENAMELENGTH - 1);
-		//strncpy_s(toonMat->paintName, rwTEXTUREBASENAMELENGTH - 1, name, rwTEXTUREBASENAMELENGTH - 1);
     }
     else
     {
