@@ -17,7 +17,7 @@ workspace "rptoon"
    language "C"
    rtti "Off"
    characterset "MBCS"
-   defines { "WIN32", "_WINDOWS" }
+   defines { "WIN32", "_WINDOWS", "_CRT_SECURE_NO_WARNINGS" }
    includedirs  { "%{dir_src}" }  
    files  {  "%{dir_src}/**.h", "%{dir_src}/**.c", }
    filter { "kind:WindowedApp" }
