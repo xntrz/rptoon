@@ -1378,7 +1378,6 @@ ToonAtomicRender( RpAtomic *atomic )
 * \see RpAtomicSetRenderCallBack
 * \see RpD3D9ToonFastSilhouetteWorldSectorRenderCallback
 */
-//HoDong
 RpAtomic *
 RpD3D9ToonFastSilhouetteAtomicRenderCallback(RpAtomic *atomic)
 {
