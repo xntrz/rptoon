@@ -121,7 +121,7 @@ _rpToonSkinSetupGlobals(void)
 
 	/* checkout */
 	RWASSERT((RpSkinGetD3D9Pipeline(rpSKIND3D9PIPELINETOON) != NULL) && "NULL pipeline after set");
-	RWASSERT((RpSkinGetD3D9Pipeline(rpSKIND3D9PIPELINETOON) != ToonSkinPipeline) && "not our pipeline");
+	RWASSERT((RpSkinGetD3D9Pipeline(rpSKIND3D9PIPELINETOON) == ToonSkinPipeline) && "not our pipeline");
 
 	RWRETURN(TRUE);
 };
@@ -351,7 +351,7 @@ _rpToonSkinRegistAllHooks(void)
 
 	RWFUNCTION(RWSTRING("_rpToonSkinRegistAllHooks"));
 
-	RWASSERT((srcFuncTable == dstFuncTable) && "table size should equal");
+	RWASSERT((srcFuncTableSize == dstFuncTableSize) && "table size should equal");
 
 	for (i = 0; i < srcFuncTableSize; ++i)
 	{
