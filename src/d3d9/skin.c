@@ -322,6 +322,9 @@ _rpToonSkinUninstallHooks(void)
 		_memio(hookInfo->srcFunc, hookInfo->orgBytes, hookInfo->orgBytesCnt, TRUE);
 	};
 
+	memset(HookInfoArray, 0, sizeof(HookInfoArray));
+	HookInfoCnt = 0;
+
 	RWRETURNVOID();
 };
 
